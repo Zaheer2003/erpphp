@@ -9,43 +9,71 @@ if ($conn->connect_error) {
 
 // Login Handling
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['login'])) {
-    // Check if 'email' key exists in the $_POST array before accessing
     if (isset($_POST['username']) && isset($_POST['password'])) {
-        $email = $conn->real_escape_string(trim($_POST['username'])); // Use 'email' instead of 'username'
+        $usernameOrEmail = $conn->real_escape_string(trim($_POST['username']));
         $password = trim($_POST['password']);
 
         // Use prepared statement to prevent SQL injection
-        $stmt = $conn->prepare("SELECT * FROM users WHERE username = ?");
-        $stmt->bind_param("s", $email);
+        $stmt = $conn->prepare("SELECT id, username, password FROM user WHERE username = ? OR email = ?");
+        $stmt->bind_param("ss", $usernameOrEmail, $usernameOrEmail);
         $stmt->execute();
         $result = $stmt->get_result();
 
         if ($result->num_rows > 0) {
             $row = $result->fetch_assoc();
             if (password_verify($password, $row['password'])) {
-                $_SESSION['username'] = $email;
-                $_SESSION['role'] = $row['role']; // Store the role in the session
-                
-                // Redirect based on user role
-                if ($_SESSION['role'] == 'Manager' || $_SESSION['role'] == 'Employee') {
-                    header("Location: dashboard.php"); // Redirect to admin/manager dashboard
-                    exit();
-                } else {
-                    header("Location: dashboard.php"); // Redirect to employee dashboard (limited access)
-                    exit();
-                }
+                // Set session variables
+                $_SESSION['id'] = $row['id'];
+                $_SESSION['username'] = $row['username'];
+
+                // Redirect to the dashboard
+                header("Location: dashboard.php");
+                exit();
             } else {
                 $error = "Invalid password.";
             }
         } else {
-            $error = "No user found with that email.";
+            $error = "No user found with that username or email.";
         }
     } else {
-        $error = "Please enter both email and password.";
+        $error = "Please enter both username and password.";
+    }
+}
+
+// Registration Handling
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['register'])) {
+    if (isset($_POST['reg_username'], $_POST['email'], $_POST['reg_password'])) {
+        $username = $conn->real_escape_string(trim($_POST['reg_username']));
+        $email = $conn->real_escape_string(trim($_POST['email']));
+        $password = trim($_POST['reg_password']);
+
+        // Check if the username or email already exists
+        $stmt = $conn->prepare("SELECT id FROM user WHERE username = ? OR email = ?");
+        $stmt->bind_param("ss", $username, $email);
+        $stmt->execute();
+        $result = $stmt->get_result();
+
+        if ($result->num_rows > 0) {
+            $error = "Username or email already exists.";
+        } else {
+            // Hash the password for security
+            $hashedPassword = password_hash($password, PASSWORD_BCRYPT);
+
+            // Insert the new user into the database
+            $stmt = $conn->prepare("INSERT INTO user (username, email, password, created_at) VALUES (?, ?, ?, NOW())");
+            $stmt->bind_param("sss", $username, $email, $hashedPassword);
+
+            if ($stmt->execute()) {
+                $success = "Registration successful! You can now log in.";
+            } else {
+                $error = "Registration failed. Please try again.";
+            }
+        }
+    } else {
+        $error = "Please fill in all fields.";
     }
 }
 ?>
-
 
 
 
